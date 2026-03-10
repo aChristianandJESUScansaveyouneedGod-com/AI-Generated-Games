@@ -1,41 +1,50 @@
-name: Autonomous Game Build
+name: Autonomous Game Factory Build
 
 on:
   push:
     branches: [ main ]
+
   workflow_dispatch:
 
 jobs:
 
-  detect-project:
+  detect-projects:
+
     runs-on: ubuntu-latest
+
     outputs:
-      project_exists: ${{ steps.check.outputs.exists }}
+      projects_found: ${{ steps.detect.outputs.projects }}
 
     steps:
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Detect CMake project
-        id: check
+      - name: Detect game projects
+        id: detect
         run: |
-          if [ -f "CMakeLists.txt" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
+
+          count=0
+
+          for dir in Projects/*; do
+            if [ -f "$dir/CMakeLists.txt" ]; then
+              echo "Found project: $dir"
+              count=$((count+1))
+            fi
+          done
+
+          echo "projects=$count" >> $GITHUB_OUTPUT
+
 
   build-windows:
 
-    needs: detect-project
-    if: needs.detect-project.outputs.project_exists == 'true'
+    needs: detect-projects
 
     runs-on: windows-latest
 
     steps:
 
-      - name: Checkout Repo
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install CMake
         uses: lukka/get-cmake@latest
@@ -43,27 +52,56 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v1.1
 
-      - name: Configure
-        run: cmake -S . -B build
+      - name: Create release directory
+        run: mkdir releases
 
-      - name: Compile
-        run: cmake --build build --config Release
-
-      - name: Package
+      - name: Build all game projects
+        shell: bash
         run: |
-          mkdir release
-          copy build\Release\*.exe release\
 
-      - name: Copy Assets
+          for dir in Projects/*; do
+
+            if [ -f "$dir/CMakeLists.txt" ]; then
+
+              echo "Building $dir"
+
+              cmake -S "$dir" -B "$dir/build"
+
+              cmake --build "$dir/build" --config Release
+
+            fi
+
+          done
+
+      - name: Collect executables
+        shell: bash
         run: |
-          xcopy Assets release\Assets /E /I
 
-      - name: Zip Build
+          for dir in Projects/*; do
+
+            if [ -d "$dir/build/Release" ]; then
+
+              cp "$dir/build/Release/"*.exe releases/ || true
+
+            fi
+
+          done
+
+      - name: Copy shared assets
+        shell: bash
         run: |
-          powershell Compress-Archive release GameBuild.zip
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+          if [ -d Assets ]; then
+            cp -r Assets releases/Assets
+          fi
+
+      - name: Zip builds
+        shell: pwsh
+        run: |
+          Compress-Archive releases GameBuild.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
           name: GameBuild
           path: GameBuild.zip
