@@ -3,36 +3,51 @@ name: Autonomous Game Build
 on:
   push:
     branches: [ main ]
-
   workflow_dispatch:
 
 jobs:
 
+  detect-project:
+    runs-on: ubuntu-latest
+    outputs:
+      project_exists: ${{ steps.check.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Detect CMake project
+        id: check
+        run: |
+          if [ -f "CMakeLists.txt" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
   build-windows:
+
+    needs: detect-project
+    if: needs.detect-project.outputs.project_exists == 'true'
 
     runs-on: windows-latest
 
     steps:
 
-      - name: Checkout Repository
+      - name: Checkout Repo
         uses: actions/checkout@v3
-
-      - name: Setup Visual Studio Build Tools
-        uses: microsoft/setup-msbuild@v1.1
 
       - name: Install CMake
         uses: lukka/get-cmake@latest
 
-      - name: Create Build Directory
-        run: mkdir build
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1.1
 
-      - name: Configure Project
+      - name: Configure
         run: cmake -S . -B build
 
-      - name: Compile Game
+      - name: Compile
         run: cmake --build build --config Release
 
-      - name: Create Release Folder
+      - name: Package
         run: |
           mkdir release
           copy build/Release/*.exe release/
@@ -41,11 +56,11 @@ jobs:
         run: |
           xcopy Assets release\Assets /E /I
 
-      - name: Package Build
+      - name: Zip Build
         run: |
           powershell Compress-Archive release GameBuild.zip
 
-      - name: Upload Build Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
           name: GameBuild
