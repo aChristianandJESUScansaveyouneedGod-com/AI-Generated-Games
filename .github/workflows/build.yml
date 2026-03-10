@@ -1,38 +1,52 @@
-name: Build Game
+name: Autonomous Game Build
 
 on:
   push:
     branches: [ main ]
 
+  workflow_dispatch:
+
 jobs:
-  build:
+
+  build-windows:
 
     runs-on: windows-latest
 
     steps:
 
-      - name: Checkout Repo
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Setup MSBuild
+      - name: Setup Visual Studio Build Tools
         uses: microsoft/setup-msbuild@v1.1
 
       - name: Install CMake
         uses: lukka/get-cmake@latest
 
-      - name: Configure
+      - name: Create Build Directory
+        run: mkdir build
+
+      - name: Configure Project
         run: cmake -S . -B build
 
-      - name: Build
+      - name: Compile Game
         run: cmake --build build --config Release
 
-      - name: Package Game
+      - name: Create Release Folder
         run: |
           mkdir release
           copy build/Release/*.exe release/
 
+      - name: Copy Assets
+        run: |
+          xcopy Assets release\Assets /E /I
+
+      - name: Package Build
+        run: |
+          powershell Compress-Archive release GameBuild.zip
+
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v3
         with:
-          name: game-build
-          path: release
+          name: GameBuild
+          path: GameBuild.zip
